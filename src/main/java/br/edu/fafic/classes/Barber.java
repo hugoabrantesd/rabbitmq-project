@@ -3,15 +3,15 @@ package br.edu.fafic.classes;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.DeliverCallback;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
-import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Barber extends Consumer {
 
@@ -19,24 +19,21 @@ public class Barber extends Consumer {
         super(name, email, password);
     }
 
-    public void execute() throws IOException, TimeoutException {
-
+    public void execute() throws IOException, TimeoutException, InterruptedException {
         int op;
         while (true) {
             consume();
             System.out.print("\n======================================\n" +
-                    "=== APP BARBEARIA ===\n" +
+                    "=========== APP BARBEARIA --> BARBEIRO ===========\n" +
                     "1- Ver agendamentos\n" +
                     "0- Sair\n" +
                     "==> ");
-
-
             op = this.getScanner().nextInt();
             if (op == 1) {
                 if (!this.getAgendamentos().isEmpty()) {
                     acceptScheduling();
                 } else {
-                    System.out.println("Sem agendamentos por enquanto.");
+                    System.out.print("\n---> Sem agendamentos por enquanto <---".toUpperCase());
                 }
             } else {
                 System.exit(0);
@@ -45,46 +42,69 @@ public class Barber extends Consumer {
         }
     }
 
-    private void acceptScheduling() throws IOException, TimeoutException {
-        System.out.println("");
+    private void acceptScheduling() throws IOException, TimeoutException, InterruptedException {
+        int num = this.getChannel().queueDeclare("response", false, false, false, null)
+                .getMessageCount();
+        System.out.println("QUANTIDADE: " + num);
+        System.out.println("\nAGENDAMENTOS:");
         for (int i = 0; i < this.getAgendamentos().size(); i++) {
+            //lista todos os agendamentos.
             System.out.println("===========================================");
             System.out.println("ID: " + this.getAgendamentos().get(i).get("id") + "\n" +
                     "Cliente: " + this.getAgendamentos().get(i).get("nameClient") + "\n" +
-                    "Data agendamento: " + this.getAgendamentos().get(i).get("dateScheduling") + "\n");
+                    "Data agendamento: " + this.getAgendamentos().get(i).get("dateScheduling"));
+            System.out.println("===========================================\n");
         }
 
-        System.out.print("Digite o ID do cliente para aceitar o agendamento ou 0(zero) para sair:\n ==> ");
-        int idDigitado = this.getScanner().nextInt();
+        System.out.print("1- Aceitar agendamento\n" +
+                "2- Recusar agendamento\n" +
+                "3- Enviar para fila de espera\n" +
+                "0- Voltar ao menu principal\n" +
+                "==> ");
+        int opcao = this.getScanner().nextInt();
         Map<String, Object> ag;
-        if (idDigitado > 0) {
-            ag = this.getAgendamentos().get(idDigitado - 1);
+        if (opcao == 1) {
+            ag = getAgendamento();
             if (ag != null && !ag.isEmpty()) {
-                enviarResposta(ag.get("nameClient").toString());
-                this.getAgendamentos().remove(ag);
+                validarConfirmacao("Agendamento confirmado para o barbeiro: " + this.getName(), ag);
             }
-            if (!this.getAgendamentos().isEmpty()) {
-                assert ag != null;
-                reporQueueAgendamentos(this.getAgendamentos());
-                this.getAgendamentos().clear();
-            }
-        } else {
-            System.out.println("\nNenhum agendamento foi selecionado!\n");
-            assert false;
-            if (!this.getAgendamentos().isEmpty()) {
-                for (int i = 0; i < this.getAgendamentos().size(); i++) {
-                    String queue = this.getAgendamentos().get(i).get("nameClient").toString();
-                    reporQueueAgendamentos(this.getAgendamentos());
-                }
-                this.getAgendamentos().clear();
-            }
-
+        } else if (opcao == 2) {
+            ag = getAgendamento();
+            this.getAgendamentos().remove(ag);
+            System.out.print("\nAgendamento recusado!");
+        } else if (opcao == 3) {
+            ag = getAgendamento();
+            enviarParaFilaEspera(ag);
         }
+//        else {
+//            System.out.println("\nNenhum agendamento foi selecionado!\n");
+////            assert false;
+////            if (!this.getAgendamentos().isEmpty()) {
+////                for (int i = 0; i < this.getAgendamentos().size(); i++) {
+////                    reporQueueAgendamentos(this.getAgendamentos().get(i));
+////                }
+////                //this.getAgendamentos().clear();
+////            }
+//        }
+    }
+
+    private Map<String, Object> getAgendamento() {
+        System.out.print("Digite o ID do cliente: \n" +
+                "--> ");
+        final int idCliente = this.getScanner().nextInt();
+        return this.getAgendamentos().get(idCliente - 1);
+    }
+
+    private void enviarParaFilaEspera(Map<String, Object> agendamento) throws IOException {
+        String json = new Gson().toJson(agendamento);
+        this.getChannel().basicPublish("", this.getName(), null, json.getBytes());
+        this.getAgendamentos().remove(agendamento);
+        System.out.print("Agendamento enviado para a fila de espera!");
     }
 
     @Override
-    public void consume() throws IOException, TimeoutException {
-        System.out.println("Recebendo mensagens...");
+    public void consume() throws IOException {
+        System.out.println("\n*** Aguardando novos agendamentos...");
 
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
             String str = new String(delivery.getBody());
@@ -92,52 +112,108 @@ public class Barber extends Consumer {
             }.getType();
             Map<String, Object> result = new Gson().fromJson(str, type);
             this.getAgendamentos().add(result);
-            //System.out.println("json: " + result.toString());
-            //this.nomeCliente = result.get("nameClient").toString();
         };
-        if (this.getChannel().isOpen()) {
-            this.getChannel().basicConsume(this.getName(), true, deliverCallback, consumerTag -> {
-            });
-        }
+        this.getChannel().basicConsume(this.getName(), true, deliverCallback, consumerTag -> {
+        });
+    }
 
+    private void validarConfirmacao(String msg, Map<String, Object> agendamento) throws IOException, InterruptedException, TimeoutException {
+        String queueResponse = "response";
+        ConnectionFactory factory = new ConnectionFactory();
+        factory.setHost("localhost");
+        com.rabbitmq.client.Connection connection = factory.newConnection();
+        Channel channel = connection.createChannel();
+        channel.queueDeclare(queueResponse, false, false, false, null);
+        channel.basicPublish("", queueResponse,
+                null, msg.getBytes());
+        verificarSolicitacoes(agendamento);
+    }
+
+    private void verificarSolicitacoes(Map<String, Object> agendamento) throws IOException, InterruptedException, TimeoutException {
+        String nomeCliente = agendamento.get("nameClient").toString();
+        AtomicReference<String> response = new AtomicReference<>("");
+
+        ConnectionFactory factory = new ConnectionFactory();
+        factory.setHost("localhost");
+        com.rabbitmq.client.Connection connection = factory.newConnection();
+        Channel channel = connection.createChannel();
+
+        DeliverCallback deliverCallback = (consumerTag, delivery) -> {
+            String res = new String(delivery.getBody());
+            response.set(res);
+            if (response.get().contains(this.getName())) {
+                try {
+                    enviarResposta(nomeCliente);
+                    this.getAgendamentos().remove(agendamento);
+                } catch (TimeoutException | InterruptedException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                this.getAgendamentos().remove(agendamento);
+            }
+//            else {
+//                System.out.println("passou 3");
+//                if (!this.getAgendamentos().isEmpty()) {
+//                    for (int i = 0; i < this.getAgendamentos().size(); i++) {
+//                        Map<String, Object> ag = this.getAgendamentos().get(i);
+//                        reporQueueAgendamentos(ag);
+//                        this.getAgendamentos().remove(ag);
+//                    }
+//                    //this.getAgendamentos().clear();
+//                }
+//            }
+        };
+//        if (!response.get().isEmpty() && !response.get().contains(this.getName())) {
+//            System.out.println("\n*** Agendamento aceito por outro barbeirooooo ***".toUpperCase());
+//            response.set("");
+//            this.getAgendamentos().remove(agendamento);
+//        }
+
+        channel.basicConsume("response", true, deliverCallback, consumerTag -> {
+        });
+        TimeUnit.SECONDS.sleep(2);
+//        if (!response.get().isEmpty() && !response.get().contains(this.getName())) {
+//            System.out.println("\n*** Este agendamento já foi aceito por outro barbeiro!".toUpperCase());
+//            response.set("");
+//            this.getAgendamentos().remove(agendamento);
+//        }
+//        else
+
+        if (response.get().isEmpty() || !response.get().contains(this.getName())) {
+            System.out.println("\n*** Este agendamento já foi aceito por outro barbeiro!".toUpperCase());
+            this.getAgendamentos().remove(agendamento);
+        }
 
     }
 
-    public void enviarResposta(String queue) throws IOException, TimeoutException {
+    public void enviarResposta(String nomeCliente) throws IOException, TimeoutException, InterruptedException {
+        String message = "Agendamento confirmado para o barbeiro: " + this.getName();
 
-        final ConnectionFactory factory = new ConnectionFactory();
-        factory.setHost("localhost");
-        try (Connection connection = factory.newConnection()) {
-            Channel channel = connection.createChannel();
+        //1º exchange, 2º queue name
+        this.getChannel().basicPublish("", nomeCliente,
+                null, message.getBytes());
 
-            String message = "Agendamento confirmado para o barbeiro: " + this.getName();
-
-            channel.basicPublish("", queue, null, message.getBytes());
-
-            System.out.println("Confirmação enviada!!!");
-
-        }
+        System.out.println("Confirmação enviada!!!".toUpperCase());
+        System.out.println("Por favor aguarde...");
+        TimeUnit.SECONDS.sleep(1);
     }
 
-    public void reporQueueAgendamentos(List<Map<String, Object>> agendamentos)
-            throws IOException, TimeoutException {
+    public void reporQueueAgendamentos(Map<String, Object> agendamento)
+            throws IOException {
 
-        final ConnectionFactory factory = new ConnectionFactory();
-        factory.setHost("localhost");
-        try (Connection connection = factory.newConnection()) {
-            Channel channel = connection.createChannel();
-            //1º queue name
-            channel.exchangeDeclare(Constants.EXCHANGE_SCHEDULES, "direct");
-            channel.queueDeclare(this.getName(), false, false, false, null);
-            channel.queueBind(this.getName(), Constants.EXCHANGE_SCHEDULES, Constants.BARBER_ROUTING_KEY);
+        //1º queue name
+        this.getChannel().exchangeDeclare(Constants.EXCHANGE_SCHEDULES, "direct");
+        this.getChannel().queueDeclare(this.getName(), false, false, false, null);
+        this.getChannel().queueBind(this.getName(), Constants.EXCHANGE_SCHEDULES, Constants.BARBER_ROUTING_KEY);
 
-            String message = new Gson().toJson(agendamentos);
+        String message = new Gson().toJson(agendamento);
 
-            //1º exchange, 2º queue name
-            channel.basicPublish(Constants.EXCHANGE_SCHEDULES, Constants.BARBER_ROUTING_KEY,
-                    null, message.getBytes());
+        //1º exchange, 2º queue name
+        this.getChannel().basicPublish(Constants.EXCHANGE_SCHEDULES, Constants.BARBER_ROUTING_KEY,
+                null, message.getBytes());
+        this.getAgendamentos().remove(agendamento);
 
-            System.out.println("Agendamentos repostos!!!");
-        }
+        System.out.println("Agendamentos repostos!!!");
+
     }
 }
