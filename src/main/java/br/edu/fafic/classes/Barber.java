@@ -3,6 +3,7 @@ package br.edu.fafic.classes;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.DeliverCallback;
 
@@ -45,7 +46,6 @@ public class Barber extends Consumer {
     private void acceptScheduling() throws IOException, TimeoutException, InterruptedException {
         int num = this.getChannel().queueDeclare("response", false, false, false, null)
                 .getMessageCount();
-        System.out.println("QUANTIDADE: " + num);
         System.out.println("\nAGENDAMENTOS:");
         for (int i = 0; i < this.getAgendamentos().size(); i++) {
             //lista todos os agendamentos.
@@ -70,11 +70,16 @@ public class Barber extends Consumer {
             }
         } else if (opcao == 2) {
             ag = getAgendamento();
-            this.getAgendamentos().remove(ag);
+            if (ag != null) {
+                this.getAgendamentos().remove(ag);
+            }
+            this.getChannel().queueDelete("response");
             System.out.print("\nAgendamento recusado!");
         } else if (opcao == 3) {
             ag = getAgendamento();
-            enviarParaFilaEspera(ag);
+            if (ag != null) {
+                enviarParaFilaEspera(ag);
+            }
         }
 //        else {
 //            System.out.println("\nNenhum agendamento foi selecionado!\n");
@@ -91,8 +96,15 @@ public class Barber extends Consumer {
     private Map<String, Object> getAgendamento() {
         System.out.print("Digite o ID do cliente: \n" +
                 "--> ");
-        final int idCliente = this.getScanner().nextInt();
-        return this.getAgendamentos().get(idCliente - 1);
+        this.getScanner().nextLine();
+        final String idCliente = this.getScanner().nextLine();
+        for (int i = 0; i < this.getAgendamentos().size(); i++) {
+            Map<String, Object> agend = this.getAgendamentos().get(i);
+            if (idCliente.equals(agend.get("id").toString())) {
+                return agend;
+            }
+        }
+        return null;
     }
 
     private void enviarParaFilaEspera(Map<String, Object> agendamento) throws IOException {
@@ -117,12 +129,14 @@ public class Barber extends Consumer {
         });
     }
 
-    private void validarConfirmacao(String msg, Map<String, Object> agendamento) throws IOException, InterruptedException, TimeoutException {
-        String queueResponse = "response";
+    private void validarConfirmacao(String msg, Map<String, Object> agendamento) throws IOException,
+            InterruptedException, TimeoutException {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost("localhost");
-        com.rabbitmq.client.Connection connection = factory.newConnection();
+        Connection connection = factory.newConnection();
         Channel channel = connection.createChannel();
+
+        String queueResponse = "response";
         channel.queueDeclare(queueResponse, false, false, false, null);
         channel.basicPublish("", queueResponse,
                 null, msg.getBytes());
@@ -135,7 +149,7 @@ public class Barber extends Consumer {
 
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost("localhost");
-        com.rabbitmq.client.Connection connection = factory.newConnection();
+        Connection connection = factory.newConnection();
         Channel channel = connection.createChannel();
 
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
@@ -151,39 +165,17 @@ public class Barber extends Consumer {
             } else {
                 this.getAgendamentos().remove(agendamento);
             }
-//            else {
-//                System.out.println("passou 3");
-//                if (!this.getAgendamentos().isEmpty()) {
-//                    for (int i = 0; i < this.getAgendamentos().size(); i++) {
-//                        Map<String, Object> ag = this.getAgendamentos().get(i);
-//                        reporQueueAgendamentos(ag);
-//                        this.getAgendamentos().remove(ag);
-//                    }
-//                    //this.getAgendamentos().clear();
-//                }
-//            }
         };
-//        if (!response.get().isEmpty() && !response.get().contains(this.getName())) {
-//            System.out.println("\n*** Agendamento aceito por outro barbeirooooo ***".toUpperCase());
-//            response.set("");
-//            this.getAgendamentos().remove(agendamento);
-//        }
 
         channel.basicConsume("response", true, deliverCallback, consumerTag -> {
         });
         TimeUnit.SECONDS.sleep(2);
-//        if (!response.get().isEmpty() && !response.get().contains(this.getName())) {
-//            System.out.println("\n*** Este agendamento já foi aceito por outro barbeiro!".toUpperCase());
-//            response.set("");
-//            this.getAgendamentos().remove(agendamento);
-//        }
-//        else
-
         if (response.get().isEmpty() || !response.get().contains(this.getName())) {
             System.out.println("\n*** Este agendamento já foi aceito por outro barbeiro!".toUpperCase());
             this.getAgendamentos().remove(agendamento);
+            channel.queueDelete("response");
+            channel.close();
         }
-
     }
 
     public void enviarResposta(String nomeCliente) throws IOException, TimeoutException, InterruptedException {
