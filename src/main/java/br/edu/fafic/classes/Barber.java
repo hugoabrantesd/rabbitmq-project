@@ -50,10 +50,10 @@ public class Barber extends Consumer {
         for (int i = 0; i < this.getAgendamentos().size(); i++) {
             //lista todos os agendamentos.
             System.out.println("===========================================");
-            System.out.println("ID: " + this.getAgendamentos().get(i).get("id") + "\n" +
+            System.out.print("ID: " + this.getAgendamentos().get(i).get("id") + "\n" +
                     "Cliente: " + this.getAgendamentos().get(i).get("nameClient") + "\n" +
                     "Data agendamento: " + this.getAgendamentos().get(i).get("dateScheduling"));
-            System.out.println("===========================================\n");
+            System.out.println("\n");
         }
 
         System.out.print("1- Aceitar agendamento\n" +
@@ -81,16 +81,6 @@ public class Barber extends Consumer {
                 enviarParaFilaEspera(ag);
             }
         }
-//        else {
-//            System.out.println("\nNenhum agendamento foi selecionado!\n");
-////            assert false;
-////            if (!this.getAgendamentos().isEmpty()) {
-////                for (int i = 0; i < this.getAgendamentos().size(); i++) {
-////                    reporQueueAgendamentos(this.getAgendamentos().get(i));
-////                }
-////                //this.getAgendamentos().clear();
-////            }
-//        }
     }
 
     private Map<String, Object> getAgendamento() {
@@ -174,7 +164,6 @@ public class Barber extends Consumer {
             System.out.println("\n*** Este agendamento já foi aceito por outro barbeiro!".toUpperCase());
             this.getAgendamentos().remove(agendamento);
             channel.queueDelete("response");
-            //channel.close();
         }
     }
 
