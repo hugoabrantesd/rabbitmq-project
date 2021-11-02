@@ -1,6 +1,5 @@
 package br.edu.fafic.classes;
 
-import br.edu.fafic.dao.Dao;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
@@ -18,7 +17,6 @@ public abstract class Consumer {
     private String password;
     private final Scanner scanner;
     private final ArrayList<Map<String, Object>> agendamentos;
-    private final ArrayList<Map<String, Object>> agendamentosAceitos;
     private final Channel channel;
 
     public Consumer(String name, String email, String password) throws IOException, TimeoutException {
@@ -27,7 +25,6 @@ public abstract class Consumer {
         this.password = password;
         this.scanner = new Scanner(System.in);
         this.agendamentos = new ArrayList<>();
-        this.agendamentosAceitos = (ArrayList<Map<String, Object>>) Dao.getAgendamentosAceitos();
 
         Channel channel = this.initConnection();
         channel.exchangeDeclare(Constants.EXCHANGE_SCHEDULES, "direct");
@@ -66,10 +63,6 @@ public abstract class Consumer {
 
     public ArrayList<Map<String, Object>> getAgendamentos() {
         return agendamentos;
-    }
-
-    public ArrayList<Map<String, Object>> getAgendamentosAceitos() {
-        return agendamentosAceitos;
     }
 
     public Channel getChannel() {

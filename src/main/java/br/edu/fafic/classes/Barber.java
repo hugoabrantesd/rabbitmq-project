@@ -174,7 +174,7 @@ public class Barber extends Consumer {
             System.out.println("\n*** Este agendamento já foi aceito por outro barbeiro!".toUpperCase());
             this.getAgendamentos().remove(agendamento);
             channel.queueDelete("response");
-            channel.close();
+            //channel.close();
         }
     }
 
