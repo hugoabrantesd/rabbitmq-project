@@ -72,6 +72,11 @@ public abstract class Consumer {
     public Channel initConnection() throws IOException, TimeoutException {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost("localhost");
+//        factory.setHost("192.168.2.4");
+//        factory.setPort(5672);
+//        factory.setUsername("hugo");
+//        factory.setPassword("13111992");
+//        factory.setVirtualHost("/");
         Connection connection = factory.newConnection();
         //Channel channel = connection.createChannel();
         return connection.createChannel();

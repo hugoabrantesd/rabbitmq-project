@@ -9,6 +9,9 @@ import com.rabbitmq.client.DeliverCallback;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.net.URISyntaxException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -16,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class Barber extends Consumer {
 
-    public Barber(String name, String email, String password) throws IOException, TimeoutException {
+    public Barber(String name, String email, String password) throws IOException, TimeoutException, URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
         super(name, email, password);
     }
 
@@ -121,14 +124,19 @@ public class Barber extends Consumer {
 
     private void validarConfirmacao(String msg, Map<String, Object> agendamento) throws IOException,
             InterruptedException, TimeoutException {
-        ConnectionFactory factory = new ConnectionFactory();
-        factory.setHost("localhost");
-        Connection connection = factory.newConnection();
-        Channel channel = connection.createChannel();
+        //ConnectionFactory factory = new ConnectionFactory();
+        //factory.setHost("localhost");
+        //Connection connection = factory.newConnection();
+//        factory.setHost("192.168.2.4");
+//        factory.setPort(5672);
+//        factory.setUsername("hugo");
+//        factory.setPassword("13111992");
+//        factory.setVirtualHost("/");
+        //Channel channel = connection.createChannel();
 
         String queueResponse = "response";
-        channel.queueDeclare(queueResponse, false, false, false, null);
-        channel.basicPublish("", queueResponse,
+        this.getChannel().queueDeclare(queueResponse, false, false, false, null);
+        this.getChannel().basicPublish("", queueResponse,
                 null, msg.getBytes());
         verificarSolicitacoes(agendamento);
     }
@@ -137,10 +145,14 @@ public class Barber extends Consumer {
         String nomeCliente = agendamento.get("nameClient").toString();
         AtomicReference<String> response = new AtomicReference<>("");
 
-        ConnectionFactory factory = new ConnectionFactory();
-        factory.setHost("localhost");
-        Connection connection = factory.newConnection();
-        Channel channel = connection.createChannel();
+//        ConnectionFactory factory = new ConnectionFactory();
+//        factory.setHost("192.168.2.4");
+//        factory.setPort(5672);
+//        factory.setUsername("hugo");
+//        factory.setPassword("13111992");
+//        factory.setVirtualHost("/");
+//        Connection connection = factory.newConnection();
+//        Channel channel = connection.createChannel();
 
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
             String res = new String(delivery.getBody());
@@ -157,19 +169,18 @@ public class Barber extends Consumer {
             }
         };
 
-        channel.basicConsume("response", true, deliverCallback, consumerTag -> {
+        this.getChannel().basicConsume("response", true, deliverCallback, consumerTag -> {
         });
         TimeUnit.SECONDS.sleep(2);
         if (response.get().isEmpty() || !response.get().contains(this.getName())) {
             System.out.println("\n*** Este agendamento já foi aceito por outro barbeiro!".toUpperCase());
             this.getAgendamentos().remove(agendamento);
-            channel.queueDelete("response");
+            this.getChannel().queueDelete("response");
         }
     }
 
     public void enviarResposta(String nomeCliente) throws IOException, TimeoutException, InterruptedException {
         String message = "Agendamento confirmado para o barbeiro: " + this.getName();
-
         //1º exchange, 2º queue name
         this.getChannel().basicPublish("", nomeCliente,
                 null, message.getBytes());
