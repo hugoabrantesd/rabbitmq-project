@@ -13,6 +13,4 @@ Tecnologias utilizadas:
 
 # Autor
 
-Hugo Abrantes de Lira
-
-Linkedin: https://www.linkedin.com/in/hugoabrantesd
+- Hugo Abrantes de Lira -> Linkedin: https://www.linkedin.com/in/hugoabrantesd
